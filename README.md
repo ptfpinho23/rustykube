@@ -1,0 +1,1 @@
+# Fast Kubernetes Manifest management
