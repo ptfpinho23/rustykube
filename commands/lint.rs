@@ -2,7 +2,7 @@ use serde_yaml::Value;
 use std::fs;
 
 use crate::utils;
-use crate::lint_rules::{LintRule, MissingLabelsRule, ResourceLimitsRule};
+use crate::lint_rules::{LintRule, LivenessProbeRule, MissingLabelsRule, ReadinessProbeRule, ResourceLimitsRule};
 
 pub fn run_lint(path: &str, json: bool) {
     let contents = fs::read_to_string(path).expect("Failed to read file");
@@ -12,6 +12,8 @@ pub fn run_lint(path: &str, json: bool) {
     let rules: Vec<Box<dyn LintRule>> = vec![
         Box::new(MissingLabelsRule),
         Box::new(ResourceLimitsRule),
+        Box::new(LivenessProbeRule),
+        Box::new(ReadinessProbeRule)
     ];
 
     let mut results = vec![];
