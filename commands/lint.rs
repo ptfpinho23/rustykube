@@ -1,4 +1,3 @@
-use serde_yaml::Value;
 use std::fs;
 use crate::utils;
 use crate::lint_rules::{LintRule, LivenessProbeRule, MissingLabelsRule, ReadinessProbeRule, ResourceLimitsRule};
@@ -21,7 +20,7 @@ pub fn run_lint(path: &str, json: bool) {
 
     for (i, doc) in docs.iter().enumerate() {
         let mut document_issues = vec![];
-        println!("📄 Document {}:", i + 1);
+        println!("📄 Resource {}:", i + 1);
 
         for rule in &rules {
             if let Some(message) = rule.check(doc) {
@@ -39,13 +38,13 @@ pub fn run_lint(path: &str, json: bool) {
             println!();
         }
 
-        results.push((format!("Document {}", i + 1), document_issues));
+        results.push((format!("Resource {}", i + 1), document_issues));
     }
 
     // Final Summary
     println!("--- Summary ---");
     if total_issues == 0 {
-        println!("🎉 All documents passed linting with no issues!\n");
+        println!("🎉 All Resources passed linting with no issues!\n");
     } else {
         println!(
             "⚠️  Linting completed with {} issue(s) across {} document(s).\n",
