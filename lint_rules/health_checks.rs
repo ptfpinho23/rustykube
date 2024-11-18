@@ -35,9 +35,9 @@ impl LintRule for ReadinessProbeRule {
 
         for container in containers {
             if container.get("readinessProbe").is_none() {
-                return Some("Container is missing readinessProbe.".to_string());
+                return Some("Container is missing readinessProbe.".to_string())
             }
         }
-        None
+        return None
     }
 }

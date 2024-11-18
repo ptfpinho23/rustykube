@@ -1,6 +1,6 @@
 use std::fs;
 use crate::utils;
-use crate::lint_rules::{LintRule, LivenessProbeRule, MissingLabelsRule, ReadinessProbeRule, ResourceLimitsRule};
+use crate::lint_rules::{LintRule, LivenessProbeRule, MissingLabelsRule, ReadinessProbeRule, ResourceLimitsRule, RunAsNonRootRule, ReadOnlyRootFilesystemRule, LatestImageTagRule};
 
 pub fn run_lint(path: &str, json: bool) {
     let contents = fs::read_to_string(path).expect("Failed to read file");
@@ -11,12 +11,15 @@ pub fn run_lint(path: &str, json: bool) {
         Box::new(ResourceLimitsRule),
         Box::new(LivenessProbeRule),
         Box::new(ReadinessProbeRule),
+        Box::new(RunAsNonRootRule),
+        Box::new(ReadOnlyRootFilesystemRule),
+        Box::new(LatestImageTagRule)
     ];
 
     let mut results = vec![];
     let mut total_issues = 0;
 
-    println!("\n--- Lintin Results ---\n");
+    println!("\n--- Linting Results ---\n");
 
     for (i, doc) in docs.iter().enumerate() {
         let mut document_issues = vec![];
@@ -47,13 +50,12 @@ pub fn run_lint(path: &str, json: bool) {
         println!("🎉 All Resources passed linting with no issues!\n");
     } else {
         println!(
-            "⚠️  Linting completed with {} issue(s) across {} document(s).\n",
+            "⚠️  Linting completed with {} issue(s) across {} resource(s).\n",
             total_issues,
             docs.len()
         );
     }
 
-    // JSON Output (if requested)
     if json {
         let json_output: Vec<_> = results
             .into_iter()
