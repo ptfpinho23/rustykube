@@ -22,26 +22,39 @@ pub fn run_lint(path: &str, json: bool) {
     println!("\n--- Linting Results ---\n");
 
     for (i, doc) in docs.iter().enumerate() {
-        let mut document_issues = vec![];
-        println!("📄 Resource {}:", i + 1);
+    
+        let resource_kind = doc
+        .get("kind")
+        .and_then(|v| v.as_str())
+        .unwrap_or("Unknown type");
+    
+        let resource_name = doc
+            .get("metadata")
+            .and_then(|metadata| metadata.get("name"))
+            .and_then(|name| name.as_str())
+            .unwrap_or("Unnamed resource");
+        
+        println!("📄 Resource {}, of Type: {}:", resource_name, resource_kind);
+    
+        let mut resource_issues = vec![];
 
         for rule in &rules {
             if let Some(message) = rule.check(doc) {
                 total_issues += 1;
-                document_issues.push(message);
+                resource_issues.push(message);
             }
         }
 
-        if document_issues.is_empty() {
+        if resource_issues.is_empty() {
             println!("  ✅ No issues found.\n");
         } else {
-            for issue in &document_issues {
+            for issue in &resource_issues {
                 println!("  ❌ {}", issue);
             }
             println!();
         }
 
-        results.push((format!("Resource {}", i + 1), document_issues));
+        results.push((format!("Resource {}", i + 1), resource_issues));
     }
 
     // Final Summary
