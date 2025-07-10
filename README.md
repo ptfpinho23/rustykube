@@ -328,6 +328,294 @@ rustykube optimize -p ./manifests --in-place
 rustykube lint -p ./manifests
 ```
 
+## 🔧 CI/CD Integration
+
+RustyKube is designed for easy integration into CI/CD pipelines:
+
+### GitHub Actions Example
+
+```yaml
+name: Kubernetes Manifest Linting
+on: [push, pull_request]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Install RustyKube
+        run: cargo install rustykube
+        
+      - name: Lint Kubernetes Manifests
+        run: |
+          rustykube lint --path k8s/ --json > lint-results.json
+          if [ $? -ne 0 ]; then
+            echo "Linting failed!"
+            cat lint-results.json
+            exit 1
+          fi
+          
+      - name: Upload lint results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: lint-results
+          path: lint-results.json
+```
+
+### GitLab CI Example
+
+```yaml
+stages:
+  - validate
+
+k8s-lint:
+  stage: validate
+  image: rust:latest
+  before_script:
+    - cargo install rustykube
+  script:
+    - rustykube lint --path manifests/ --strict
+    - rustykube validate --path manifests/
+  artifacts:
+    reports:
+      junit: lint-results.xml
+```
+
+### Jenkins Pipeline Example
+
+```groovy
+pipeline {
+    agent any
+    stages {
+        stage('Kubernetes Lint') {
+            steps {
+                sh 'cargo install rustykube'
+                sh 'rustykube lint --path k8s/ --json > results.json'
+                archiveArtifacts artifacts: 'results.json'
+            }
+        }
+    }
+}
+```
+
+## 📚 Advanced Usage Examples
+
+### Sample Kubernetes Manifest
+
+Here's an example of a well-configured manifest that passes all RustyKube checks:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-deployment
+  labels:
+    app: nginx
+    version: "1.0"
+    environment: production
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+        version: "1.0"
+        environment: production
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.21-alpine
+        ports:
+        - containerPort: 80
+        resources:
+          limits:
+            cpu: 500m
+            memory: 128Mi
+          requests:
+            cpu: 250m
+            memory: 64Mi
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1001
+          readOnlyRootFilesystem: true
+          allowPrivilegeEscalation: false
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: var-cache
+          mountPath: /var/cache/nginx
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: var-cache
+        emptyDir: {}
+      securityContext:
+        fsGroup: 1001
+```
+
+### Bulk Processing Example
+
+```bash
+# Process multiple directories
+find . -name "*.yaml" -path "*/k8s/*" | xargs rustykube lint --path
+
+# Generate comprehensive report for entire project
+rustykube analyze --path . --detailed --json > full-analysis.json
+
+# Fix issues across multiple files
+rustykube fix --path ./manifests --in-place --verbose
+```
+
+## 🛠️ Development
+
+### Adding New Rules
+
+1. Create a new file in the `lint_rules/` directory:
+
+```rust
+use super::LintRule;
+use serde_yaml::Value;
+
+pub struct CustomSecurityRule;
+
+impl LintRule for CustomSecurityRule {
+    fn check(&self, doc: &Value) -> Option<String> {
+        // Check for specific security requirement
+        if let Some(spec) = doc.get("spec") {
+            if let Some(template) = spec.get("template") {
+                if let Some(spec) = template.get("spec") {
+                    if let Some(containers) = spec.get("containers") {
+                        if let Some(containers_array) = containers.as_sequence() {
+                            for container in containers_array {
+                                if let Some(security_context) = container.get("securityContext") {
+                                    if security_context.get("privileged") == Some(&Value::Bool(true)) {
+                                        return Some("Container running in privileged mode is not allowed".to_string());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+}
+```
+
+2. Export your rule in `lint_rules/mod.rs`:
+
+```rust
+pub mod custom_security;
+pub use custom_security::CustomSecurityRule;
+```
+
+3. Add it to the rules vector in `commands/lint.rs`:
+
+```rust
+let rules: Vec<Box<dyn LintRule>> = vec![
+    Box::new(MissingLabelsRule),
+    Box::new(ResourceLimitsRule),
+    Box::new(CustomSecurityRule), // Add your rule here
+    // ... other rules
+];
+```
+
+### Running Tests
+
+```bash
+# Run all tests
+cargo test
+
+# Run tests with output
+cargo test -- --nocapture
+
+# Run specific test
+cargo test test_lint_missing_labels
+
+# Run tests for specific module
+cargo test lint_rules::
+```
+
+### Building and Optimization
+
+```bash
+# Development build
+cargo build
+
+# Optimized release build
+cargo build --release
+
+# Build with specific features
+cargo build --features "extra-security-rules"
+
+# Cross-compilation for different targets
+cargo build --target x86_64-unknown-linux-musl
+```
+
+### Code Quality
+
+```bash
+# Run clippy for linting
+cargo clippy -- -D warnings
+
+# Format code
+cargo fmt
+
+# Check formatting
+cargo fmt -- --check
+
+# Run security audit
+cargo audit
+```
+
+## 🗺️ Roadmap
+
+### Current Features ✅
+- [x] Comprehensive linting with 7+ built-in rules
+- [x] Manifest validation and syntax checking
+- [x] Performance optimization with safety checks
+- [x] Auto-fix capabilities with dry-run support
+- [x] Detailed analysis with scoring metrics
+- [x] Multi-format output (human-readable and JSON)
+- [x] CI/CD integration examples
+
+### Upcoming Features 🚧
+- [ ] **Configuration file support** - YAML/TOML configuration for custom rule sets
+- [ ] **Custom rule plugins** - Dynamic loading of external rules
+- [ ] **Web UI dashboard** - Browser-based visualization and reporting
+- [ ] **Kubernetes cluster integration** - Direct cluster analysis and validation
+- [ ] **IDE extensions** - VS Code and IntelliJ plugins
+- [ ] **Rule severity levels** - Warning vs error classifications
+- [ ] **File pattern exclusions** - Ignore specific files or directories
+- [ ] **Helm chart support** - Template rendering and validation
+- [ ] **OPA/Rego integration** - Policy-as-code compliance checking
+- [ ] **Performance benchmarking** - Resource usage optimization tracking
+
+### Future Vision 🔮
+- [ ] **Machine learning insights** - AI-powered optimization suggestions
+- [ ] **Multi-cloud compliance** - AWS EKS, GCP GKE, Azure AKS specific rules
+- [ ] **GitOps integration** - ArgoCD and Flux workflow support
+- [ ] **Security scanning** - CVE detection in container images
+- [ ] **Cost optimization** - Resource cost analysis and recommendations
+
 ## 🤝 Contributing
 
 We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
