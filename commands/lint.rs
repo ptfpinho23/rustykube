@@ -1,85 +1,150 @@
-THIS SHOULD BE A LINTER ERRORuse std::fs;
+use std::fs;
+use std::process;
 use crate::utils;
 use crate::lint_rules::{LintRule, LivenessProbeRule, MissingLabelsRule, ReadinessProbeRule, ResourceLimitsRule, RunAsNonRootRule, ReadOnlyRootFilesystemRule, LatestImageTagRule};
 
-pub fn run_lint(path: &str, json: bool) {
-    let contents = fs::read_to_string(path).expect("Failed to read file");
-    let docs = utils::parse_yaml(&contents);
+pub fn run_lint(path: &str, json: bool, strict: bool, rules_filter: Option<&str>, verbose: bool) {
+    if verbose {
+        println!("🔍 Starting lint analysis for: {}", path);
+    }
 
-    let rules: Vec<Box<dyn LintRule>> = vec![
-        Box::new(MissingLabelsRule),
-        Box::new(ResourceLimitsRule),
-        Box::new(LivenessProbeRule),
-        Box::new(ReadinessProbeRule),
-        Box::new(RunAsNonRootRule),
-        Box::new(ReadOnlyRootFilesystemRule),
-        Box::new(LatestImageTagRule)
+    let contents = match fs::read_to_string(path) {
+        Ok(content) => content,
+        Err(e) => {
+            eprintln!("❌ Error reading file '{}': {}", path, e);
+            if strict {
+                process::exit(1);
+            }
+            return;
+        }
+    };
+
+    let docs = match utils::parse_yaml(&contents) {
+        Ok(documents) => documents,
+        Err(e) => {
+            eprintln!("❌ Error parsing YAML: {}", e);
+            if strict {
+                process::exit(1);
+            }
+            return;
+        }
+    };
+
+    // Initialize all available rules
+    let all_rules: Vec<(&str, Box<dyn LintRule>)> = vec![
+        ("missing-labels", Box::new(MissingLabelsRule)),
+        ("resource-limits", Box::new(ResourceLimitsRule)),
+        ("liveness-probe", Box::new(LivenessProbeRule)),
+        ("readiness-probe", Box::new(ReadinessProbeRule)),
+        ("run-as-non-root", Box::new(RunAsNonRootRule)),
+        ("read-only-root-filesystem", Box::new(ReadOnlyRootFilesystemRule)),
+        ("latest-image-tag", Box::new(LatestImageTagRule))
     ];
+
+    // Filter rules based on user input
+    let active_rules: Vec<&(&str, Box<dyn LintRule>)> = if let Some(filter) = rules_filter {
+        let rule_names: Vec<&str> = filter.split(',').map(|s| s.trim()).collect();
+        all_rules.iter().filter(|(name, _)| rule_names.contains(name)).collect()
+    } else {
+        all_rules.iter().collect()
+    };
+
+    if verbose {
+        println!("📋 Running {} lint rules", active_rules.len());
+        for (name, _) in &active_rules {
+            println!("  - {}", name);
+        }
+        println!();
+    }
 
     let mut results = vec![];
     let mut total_issues = 0;
 
-    println!("\n--- Linting Results ---\n");
+    if !json {
+        println!("🔍 Linting Results\n{}", "=".repeat(50));
+    }
 
-    for (i, doc) in docs.iter().enumerate() {
-    
+    for (_i, doc) in docs.iter().enumerate() {
         let resource_kind = doc
-        .get("kind")
-        .and_then(|v| v.as_str())
-        .unwrap_or("Unknown type");
+            .get("kind")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Unknown");
     
         let resource_name = doc
             .get("metadata")
             .and_then(|metadata| metadata.get("name"))
             .and_then(|name| name.as_str())
-            .unwrap_or("Unnamed resource");
+            .unwrap_or("Unnamed");
         
-        println!("📄 Resource {}, of Type: {}:", resource_name, resource_kind);
+        if !json {
+            println!("📄 Resource: {} ({})", resource_name, resource_kind);
+        }
     
         let mut resource_issues = vec![];
 
-        for rule in &rules {
+        for (rule_name, rule) in &active_rules {
             if let Some(message) = rule.check(doc) {
                 total_issues += 1;
-                resource_issues.push(message);
+                resource_issues.push(format!("[{}] {}", rule_name, message));
             }
         }
 
-        if resource_issues.is_empty() {
-            println!("  ✅ No issues found.\n");
-        } else {
-            for issue in &resource_issues {
-                println!("  ❌ {}", issue);
+        if !json {
+            if resource_issues.is_empty() {
+                println!("  ✅ No issues found\n");
+            } else {
+                for issue in &resource_issues {
+                    println!("  ❌ {}", issue);
+                }
+                println!();
             }
-            println!();
         }
 
-        results.push((format!("Resource {}", i + 1), resource_issues));
+        results.push((format!("{} ({})", resource_name, resource_kind), resource_issues));
     }
 
-    // Final Summary
-    println!("--- Summary ---");
-    if total_issues == 0 {
-        println!("🎉 All Resources passed linting with no issues!\n");
-    } else {
-        println!(
-            "⚠️  Linting completed with {} issue(s) across {} resource(s).\n",
-            total_issues,
-            docs.len()
-        );
-    }
-
+    // Output results
     if json {
         let json_output: Vec<_> = results
             .into_iter()
-            .map(|(doc, issues)| {
+            .map(|(resource, issues)| {
                 serde_json::json!({
-                    "document": doc,
+                    "resource": resource,
                     "issues": issues,
+                    "issue_count": issues.len()
                 })
             })
             .collect();
 
-        println!("{}", serde_json::to_string_pretty(&json_output).unwrap());
+        let summary = serde_json::json!({
+            "summary": {
+                "total_resources": docs.len(),
+                "total_issues": total_issues,
+                "rules_checked": active_rules.len()
+            },
+            "results": json_output
+        });
+
+        println!("{}", serde_json::to_string_pretty(&summary).unwrap());
+    } else {
+        // Print summary
+        println!("{}", "=".repeat(50));
+        println!("📊 Summary");
+        println!("  Resources analyzed: {}", docs.len());
+        println!("  Total issues found: {}", total_issues);
+        
+        if total_issues == 0 {
+            println!("  🎉 All resources passed linting!");
+        } else {
+            println!("  ⚠️  {} issue(s) need attention", total_issues);
+        }
+    }
+
+    // Exit with error code in strict mode if issues found
+    if strict && total_issues > 0 {
+        if verbose {
+            println!("\n🚨 Exiting with error code due to --strict mode");
+        }
+        process::exit(1);
     }
 }
