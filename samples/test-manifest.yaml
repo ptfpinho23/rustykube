@@ -1,0 +1,275 @@
+# Test Manifest for RustyKube Linting
+# This file contains various Kubernetes resources to test different lint rules
+# Some resources are intentionally misconfigured to demonstrate linting capabilities
+
+---
+# GOOD EXAMPLE: This deployment should pass all lint rules
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: good-nginx-deployment
+  labels:
+    app: nginx
+    version: "1.21"
+    environment: production
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+        version: "1.21"
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.21-alpine
+        ports:
+        - containerPort: 80
+        resources:
+          limits:
+            cpu: 500m
+            memory: 128Mi
+          requests:
+            cpu: 250m
+            memory: 64Mi
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        securityContext:
+          runAsNonRoot: true
+          readOnlyRootFilesystem: true
+          runAsUser: 1000
+
+---
+# BAD EXAMPLE: Missing labels
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: missing-labels-deployment
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: webapp
+  template:
+    metadata:
+      labels:
+        app: webapp
+    spec:
+      containers:
+      - name: webapp
+        image: webapp:1.0
+        ports:
+        - containerPort: 8080
+
+---
+# BAD EXAMPLE: Missing resource limits
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: no-resource-limits
+  labels:
+    app: resource-hog
+    version: "1.0"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: resource-hog
+  template:
+    metadata:
+      labels:
+        app: resource-hog
+        version: "1.0"
+    spec:
+      containers:
+      - name: resource-hog
+        image: resource-hog:1.0
+        ports:
+        - containerPort: 3000
+        # No resource limits defined - should trigger lint rule
+
+---
+# BAD EXAMPLE: Missing health checks
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: no-health-checks
+  labels:
+    app: unhealthy
+    version: "1.0"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: unhealthy
+  template:
+    metadata:
+      labels:
+        app: unhealthy
+        version: "1.0"
+    spec:
+      containers:
+      - name: unhealthy
+        image: unhealthy:1.0
+        ports:
+        - containerPort: 8080
+        resources:
+          limits:
+            cpu: 200m
+            memory: 256Mi
+          requests:
+            cpu: 100m
+            memory: 128Mi
+        # No liveness or readiness probes - should trigger lint rules
+
+---
+# BAD EXAMPLE: Using latest tag
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: latest-tag-deployment
+  labels:
+    app: latest-app
+    version: "latest"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: latest-app
+  template:
+    metadata:
+      labels:
+        app: latest-app
+        version: "latest"
+    spec:
+      containers:
+      - name: latest-app
+        image: nginx:latest  # Should trigger latest tag lint rule
+        ports:
+        - containerPort: 80
+        resources:
+          limits:
+            cpu: 300m
+            memory: 128Mi
+
+---
+# BAD EXAMPLE: Security issues (missing runAsNonRoot and readOnlyRootFilesystem)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: insecure-deployment
+  labels:
+    app: insecure-app
+    version: "1.0"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: insecure-app
+  template:
+    metadata:
+      labels:
+        app: insecure-app
+        version: "1.0"
+    spec:
+      containers:
+      - name: insecure-app
+        image: insecure-app:1.0
+        ports:
+        - containerPort: 8080
+        resources:
+          limits:
+            cpu: 200m
+            memory: 256Mi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+        # Missing securityContext - should trigger security lint rules
+
+---
+# GOOD EXAMPLE: Service (should pass)
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-service
+  labels:
+    app: nginx
+    version: "1.21"
+spec:
+  selector:
+    app: nginx
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 80
+  type: ClusterIP
+
+---
+# BAD EXAMPLE: Multiple issues in one resource
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: problematic-deployment
+  # Missing labels entirely
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: problematic
+  template:
+    metadata:
+      labels:
+        app: problematic
+    spec:
+      containers:
+      - name: problematic-container
+        image: alpine:latest  # Latest tag
+        command: ["sleep", "3600"]
+        # No resource limits
+        # No health checks
+        # No security context
+
+---
+# GOOD EXAMPLE: ConfigMap (should pass - no specific rules apply)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  labels:
+    app: nginx
+    version: "1.21"
+data:
+  database_url: "postgres://localhost:5432/mydb"
+  redis_url: "redis://localhost:6379"
+
+---
+# GOOD EXAMPLE: Secret (should pass - no specific rules apply)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-secrets
+  labels:
+    app: nginx
+    version: "1.21"
+type: Opaque
+data:
+  username: dXNlcm5hbWU=  # base64 encoded 'username'
+  password: cGFzc3dvcmQ=  # base64 encoded 'password' 
