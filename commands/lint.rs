@@ -1,4 +1,4 @@
-use std::fs;
+THIS SHOULD BE A LINTER ERRORuse std::fs;
 use crate::utils;
 use crate::lint_rules::{LintRule, LivenessProbeRule, MissingLabelsRule, ReadinessProbeRule, ResourceLimitsRule, RunAsNonRootRule, ReadOnlyRootFilesystemRule, LatestImageTagRule};
 
